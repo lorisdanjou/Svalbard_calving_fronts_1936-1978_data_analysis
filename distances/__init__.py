@@ -2,6 +2,10 @@ import numpy as np
 import pandas as pd
 import shapely
 
+############################
+# Polygon method
+############################
+
 def distance_abs(front1, front2):
     '''
     Calculates the absolute distance between two fronts, by dividing the area of the polygon by the mean length.
@@ -93,6 +97,11 @@ def distance(front1, front2, dir_1, dir_2):
         else:       
             return sgn * dist_abs, 0
         
+        
+############################
+# Box method
+############################
+        
 def box_distance(front1, front2, box, dir_1, dir_2):
     '''
     Implements the box distance between two fronts, given the box and the direction of the fronts.
@@ -173,3 +182,78 @@ def box_distance(front1, front2, box, dir_1, dir_2):
         area1 = polygon1.area
         area2 = polygon2.area
         return (area2 - area1)/base.length, 0
+    
+############################
+# Curvilinear centerline method
+############################
+
+def curvilinear_distance(front1, front2, cl, dir_1, dir_2):
+    '''
+    Implements the curvilinear distance between two fronts, given the curvilinear centerline and the direction of the fronts.
+    Returns the distance and an error code:
+        - 0 : success
+        - 1 : fronts do not intersect with the centerline.
+    '''
+    # Sanity check : fronts must have the same direction.
+    assert dir_1 == dir_2, "Fronts must have the same direction"
+    
+    # transform direction into av vector:
+    if dir_1 == "N":
+        u = np.array([0, 1])
+    elif dir_1 == "S":
+        u = np.array([0, -1])
+    elif dir_1 == "E":
+        u = np.array([1, 0])
+    elif dir_1 == "W":
+        u = np.array([-1, 0])
+    elif dir_1 == "NE":
+        u = np.array([1, 1]) / np.sqrt(2)
+    elif dir_1 == "NW":
+        u = np.array([-1, 1]) / np.sqrt(2)
+    elif dir_1 == "SE":
+        u = np.array([1, -1]) / np.sqrt(2)
+    elif dir_1 == "SW":
+        u = np.array([-1, -1]) / np.sqrt(2)
+    else:
+        raise ValueError(f"Unknown direction: {dir_1}")
+
+    if not (shapely.intersects(front1, cl) and shapely.intersects(front2, cl)):
+        return None, 1
+    
+    else:
+    
+        points_cl = shapely.get_coordinates(cl)
+
+        ## orient the centerline such that the the origin is upflow
+        if np.dot(points_cl[-1, :], u) < np.dot(points_cl[0], u):
+            cl = cl.reverse()
+            points_cl = shapely.get_coordinates(cl)
+
+        ## define curvilinear abscissa
+        x = np.array([0] + [shapely.LineString(points_cl[0:i + 1, :]).length for i in range(1, points_cl.shape[0])]) # curvilinear abscissa of all the points along the centerline
+
+        ## weights
+        p = 2
+        points1 = shapely.get_coordinates(front1)
+        cl1_mesh_0, f1_mesh_0 = np.meshgrid(points_cl[:, 0], points1[:, 0], indexing="ij")
+        cl1_mesh_1, f1_mesh_1 = np.meshgrid(points_cl[:, 1], points1[:, 1], indexing="ij")
+        cl1_mesh, f1_mesh = np.stack([cl1_mesh_0, cl1_mesh_1], axis=-1), np.stack([f1_mesh_0, f1_mesh_1], axis=-1)
+        w1 = 1 / np.sum(np.abs(cl1_mesh - f1_mesh)** p, axis=-1) ** (1/p)
+        w1 = w1 / np.sum(w1, axis=0)  # normalize weights
+
+        x1_mesh = np.stack([x for _ in range(points1.shape[0])], axis=1)
+        t1 = np.sum(x1_mesh * w1, axis=0)
+        T1 = t1.mean()
+
+        points2 = shapely.get_coordinates(front2)
+        cl2_mesh_0, f2_mesh_0 = np.meshgrid(points_cl[:, 0], points2[:, 0], indexing="ij")
+        cl2_mesh_1, f2_mesh_1 = np.meshgrid(points_cl[:, 1], points2[:, 1], indexing="ij")
+        cl2_mesh, f2_mesh = np.stack([cl2_mesh_0, cl2_mesh_1], axis=-1), np.stack([f2_mesh_0, f2_mesh_1], axis=-1)
+        w2 = 1 / np.sum(np.abs(cl2_mesh - f2_mesh)** p, axis=-1) ** (1/p)
+        w2 = w2 / np.sum(w2, axis=0)  # normalize weights
+
+        x2_mesh = np.stack([x for _ in range(points2.shape[0])], axis=1)
+        t2 = np.sum(x2_mesh * w2, axis=0)
+        T2 = t2.mean()
+        
+        return T2 - T1, 0
