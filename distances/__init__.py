@@ -183,6 +183,66 @@ def box_distance(front1, front2, box, dir_1, dir_2):
         area2 = polygon2.area
         return (area2 - area1)/base.length, 0
     
+    
+def box_measure(front, dir, box):    
+    # transform direction into av vector:
+    if dir == "N":
+        u = np.array([0, 1])
+    elif dir == "S":
+        u = np.array([0, -1])
+    elif dir == "E":
+        u = np.array([1, 0])
+    elif dir == "W":
+        u = np.array([-1, 0])
+    elif dir == "NE":
+        u = np.array([1, 1]) / np.sqrt(2)
+    elif dir == "NW":
+        u = np.array([-1, 1]) / np.sqrt(2)
+    elif dir == "SE":
+        u = np.array([1, -1]) / np.sqrt(2)
+    elif dir == "SW":
+        u = np.array([-1, -1]) / np.sqrt(2)
+    else:
+        raise ValueError(f"Unknown direction: {dir}")
+    
+    inter = shapely.intersection(front, box.exterior)
+    if isinstance(inter, shapely.Point):
+        inter = shapely.MultiPoint([inter])
+        
+    if inter.is_empty:
+        return None, 1    
+    elif (len(list(inter.geoms)) < 2):
+        return None, 1
+    else:
+        # find the base of the box:
+        # 1 - separate the box into sides
+        box_sides = [shapely.LineString([box.exterior.coords[i], box.exterior.coords[i + 1]]) for i in range(len(box.exterior.coords) - 1)]
+        # 2 - exclude sides that intersect with the fronts and calculate the centers of the others 
+        possible_base = [box_sides[i] for i in range(len(box_sides)) if not shapely.intersects(box_sides[i], front)]
+        possible_base_centers = np.array([[shapely.centroid(possible_base[i]).x, shapely.centroid(possible_base[i]).y] for i in range(len(possible_base))])
+        # 3 - calculate the dot product of the centroid of the sides with the vector and minimize it to find the base
+        u_dot_c = np.sum(possible_base_centers * np.stack([u, u], axis=0), axis=1)
+        base = possible_base[np.argmin(u_dot_c)]
+
+        # cropped fronts
+        front_crop = shapely.intersection(front, box)
+
+        if isinstance(front_crop, shapely.MultiLineString):
+            lines = [shapely.LineString(line) for line in front_crop.geoms]
+            front_crop = lines[np.argmax([line.length for line in lines])]
+
+        # distance
+        points = [shapely.Point(coords) for coords in front_crop.coords]
+        base_points = [shapely.Point(coords) for coords in base.coords]
+        # change the order of the points if necessary to avoid negative area
+        if shapely.distance(points[0], base_points[0]) > shapely.distance(points[0], base_points[-1]):
+            points = points[::-1]
+            front_crop = shapely.LineString(points)
+
+        polygon = shapely.Polygon(list(front_crop.coords) + list(base.coords[::-1]))
+        area = polygon.area
+        return area / base.length, 0
+
 ############################
 # Curvilinear centerline method
 ############################
@@ -257,3 +317,55 @@ def curvilinear_distance(front1, front2, cl, dir_1, dir_2):
         T2 = t2.mean()
         
         return T2 - T1, 0
+    
+def curvilinear_measure(front, dir, cl):
+        
+    # transform direction into av vector:
+    if dir == "N":
+        u = np.array([0, 1])
+    elif dir == "S":
+        u = np.array([0, -1])
+    elif dir == "E":
+        u = np.array([1, 0])
+    elif dir == "W":
+        u = np.array([-1, 0])
+    elif dir == "NE":
+        u = np.array([1, 1]) / np.sqrt(2)
+    elif dir == "NW":
+        u = np.array([-1, 1]) / np.sqrt(2)
+    elif dir == "SE":
+        u = np.array([1, -1]) / np.sqrt(2)
+    elif dir == "SW":
+        u = np.array([-1, -1]) / np.sqrt(2)
+    else:
+        raise ValueError(f"Unknown direction: {dir}")
+
+    if not shapely.intersects(front, cl):
+        return None, 1
+    
+    else:
+    
+        points_cl = shapely.get_coordinates(cl)
+
+        ## orient the centerline such that the the origin is upflow
+        if np.dot(points_cl[-1, :], u) < np.dot(points_cl[0], u):
+            cl = cl.reverse()
+            points_cl = shapely.get_coordinates(cl)
+
+        ## define curvilinear abscissa
+        x = np.array([0] + [shapely.LineString(points_cl[0:i + 1, :]).length for i in range(1, points_cl.shape[0])]) # curvilinear abscissa of all the points along the centerline
+
+        ## weights
+        p = 2
+        points = shapely.get_coordinates(front)
+        cl_mesh_0, f_mesh_0 = np.meshgrid(points_cl[:, 0], points[:, 0], indexing="ij")
+        cl_mesh_1, f_mesh_1 = np.meshgrid(points_cl[:, 1], points[:, 1], indexing="ij")
+        cl_mesh, f_mesh = np.stack([cl_mesh_0, cl_mesh_1], axis=-1), np.stack([f_mesh_0, f_mesh_1], axis=-1)
+        w = 1 / np.sum(np.abs(cl_mesh - f_mesh)** p, axis=-1) ** (1/p)
+        w = w / np.sum(w, axis=0)  # normalize weights
+
+        x_mesh = np.stack([x for _ in range(points.shape[0])], axis=1)
+        t = np.sum(x_mesh * w, axis=0)
+        T = t.mean()
+
+        return T, 0
