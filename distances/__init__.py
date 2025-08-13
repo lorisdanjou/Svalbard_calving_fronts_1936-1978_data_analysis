@@ -298,7 +298,7 @@ def curvilinear_distance(front1, front2, cl, dir_1, dir_2):
         cl1_mesh_0, f1_mesh_0 = np.meshgrid(points_cl[:, 0], points1[:, 0], indexing="ij")
         cl1_mesh_1, f1_mesh_1 = np.meshgrid(points_cl[:, 1], points1[:, 1], indexing="ij")
         cl1_mesh, f1_mesh = np.stack([cl1_mesh_0, cl1_mesh_1], axis=-1), np.stack([f1_mesh_0, f1_mesh_1], axis=-1)
-        w1 = 1 / np.sum(np.abs(cl1_mesh - f1_mesh)** p, axis=-1) ** (1/p)
+        w1 = 1 / np.sqrt(np.sum(np.abs(cl1_mesh - f1_mesh)**2, axis=-1)) ** p
         w1 = w1 / np.sum(w1, axis=0)  # normalize weights
 
         x1_mesh = np.stack([x for _ in range(points1.shape[0])], axis=1)
@@ -309,7 +309,7 @@ def curvilinear_distance(front1, front2, cl, dir_1, dir_2):
         cl2_mesh_0, f2_mesh_0 = np.meshgrid(points_cl[:, 0], points2[:, 0], indexing="ij")
         cl2_mesh_1, f2_mesh_1 = np.meshgrid(points_cl[:, 1], points2[:, 1], indexing="ij")
         cl2_mesh, f2_mesh = np.stack([cl2_mesh_0, cl2_mesh_1], axis=-1), np.stack([f2_mesh_0, f2_mesh_1], axis=-1)
-        w2 = 1 / np.sum(np.abs(cl2_mesh - f2_mesh)** p, axis=-1) ** (1/p)
+        w2 = 1 / np.sqrt(np.sum(np.abs(cl2_mesh - f2_mesh)**2, axis=-1)) ** p
         w2 = w2 / np.sum(w2, axis=0)  # normalize weights
 
         x2_mesh = np.stack([x for _ in range(points2.shape[0])], axis=1)
@@ -361,7 +361,7 @@ def curvilinear_measure(front, dir, cl):
         cl_mesh_0, f_mesh_0 = np.meshgrid(points_cl[:, 0], points[:, 0], indexing="ij")
         cl_mesh_1, f_mesh_1 = np.meshgrid(points_cl[:, 1], points[:, 1], indexing="ij")
         cl_mesh, f_mesh = np.stack([cl_mesh_0, cl_mesh_1], axis=-1), np.stack([f_mesh_0, f_mesh_1], axis=-1)
-        w = 1 / np.sum(np.abs(cl_mesh - f_mesh)** p, axis=-1) ** (1/p)
+        w = 1 / np.sqrt(np.sum(np.abs(cl_mesh - f_mesh)**2, axis=-1)) ** p
         w = w / np.sum(w, axis=0)  # normalize weights
 
         x_mesh = np.stack([x for _ in range(points.shape[0])], axis=1)
